@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Files
+backend/config.py
+
+# Cloudflare / frontend / local credentials
+node_modules/
+.wrangler/
+.dev.vars*
+.env*
+!.env.example
+wrangler.production.json
+output/
+.playwright-cli/
+coverage/
+.DS_Store
