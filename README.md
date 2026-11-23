@@ -64,7 +64,7 @@ Use **Workers Free** and **D1 Free**. Authentication runs inside Booxs, so the Z
    npm run deploy
    ```
 
-   The scripts build, generate the ignored `wrangler.production.json`, apply remote migrations, upload the Worker, and upload the password hash to encrypted Worker secret storage using stdin. The generated configuration contains no password hash. On first deployment the private API rejects access until that secret is uploaded. `deploy:check` only builds and bundles locally; it does not change cloud resources.
+   The scripts build, generate the ignored `wrangler.production.json`, apply remote migrations, upload the Worker, and upload the password verifier to encrypted Worker secret storage using stdin. Existing `pbkdf2-sha256$600000$…` build secrets are automatically converted to the current verifier format without changing the password. The generated configuration contains no password hash. On first deployment the private API rejects access until that secret is uploaded. `deploy:check` only builds and bundles locally; it does not change cloud resources.
 
 5. Open the deployed HTTPS URL and sign in with your configured email and password. Confirm that `/api/books` returns 401 without a signed-in session. Preview URLs are disabled in the checked-in config.
 
@@ -84,11 +84,13 @@ The build API token needs **Workers Scripts: Edit** and **D1: Edit** in your acc
 
 ### Authentication behavior
 
-The password is verified using salted PBKDF2-HMAC-SHA256 with 600,000 iterations and constant-time comparison. Only a password hash is stored as an encrypted Worker secret. The correct password is accepted only for `OWNER_EMAIL`. Five sign-in attempts per minute across the application are enforced atomically in D1; rejected attempts return 429 and `Retry-After`. This global throttle deliberately trades one minute of possible lockout for a strict limit on distributed guesses.
+The browser fetches the public salt and derives a password proof using PBKDF2-HMAC-SHA256 with 600,000 iterations. It sends that proof over HTTPS; the Worker hashes it with a domain-separated SHA-256 and compares it in constant time with the encrypted Worker secret. The stored verifier cannot itself be submitted to sign in. This keeps the slow calculation off Workers Free, whose production runtime caps PBKDF2 at 100,000 iterations even though local workerd does not enforce that cap ([Cloudflare runtime issue](https://github.com/cloudflare/workerd/issues/1346)). The password and proof stay in memory only. The current secret format is `pbkdf2-sha256-v2$600000$salt$verifier`; the deploy script upgrades legacy build secrets automatically without needing the password.
+
+The correct proof is accepted only for `OWNER_EMAIL`. Five sign-in attempts per minute across the application are enforced atomically in D1; rejected attempts return 429 and `Retry-After`. This global throttle deliberately trades one minute of possible lockout for a strict limit on distributed guesses.
 
 Sessions use random 256-bit tokens in a `Secure`, `HttpOnly`, `SameSite=Strict`, `__Host-` cookie. Only token hashes are stored in D1. Sessions expire after 30 days. Signing out revokes the current session server-side; changing the owner email or password hash invalidates all previous sessions. To reset the password, generate a new hash, update the build secret, and redeploy. Book data remains intact.
 
-The static app shell and login page are public and contain no personal data. All book/metadata APIs require a valid session; only same-origin sign-in/logout POST endpoints are unauthenticated. No signup is exposed. Passwords and session tokens are never written to IndexedDB/localStorage or application logs. API responses use `Cache-Control: no-store`.
+The static app shell and login page are public and contain no personal data. All book/metadata APIs require a valid session; the salt/work-factor GET and same-origin sign-in/logout POST endpoints are unauthenticated. No signup is exposed. Passwords, proofs, and session tokens are never written to IndexedDB/localStorage or application logs. API responses use `Cache-Control: no-store`.
 
 ## iPhone and offline use
 
@@ -111,7 +113,7 @@ Metadata is requested through the Worker with a Booxs identification header/cont
 
 ## API
 
-Book endpoints require authentication. `PATCH` accepts the full editable book payload, with the same validation and defaults as `POST`. Same-origin POST `/api/auth/login` accepts `{ email, password }` and sets the session cookie; POST `/api/auth/logout` revokes that session and expires the cookie.
+Book endpoints require authentication. `PATCH` accepts the full editable book payload, with the same validation and defaults as `POST`. GET `/api/auth/parameters` returns the public `{ salt, iterations }`. Same-origin POST `/api/auth/login` accepts `{ email, passwordProof }` (the 64-character lowercase hex PBKDF2 result) and sets the session cookie; POST `/api/auth/logout` revokes that session and expires the cookie. Raw passwords are not sent to the API.
 
 | Method | Route                       | Result                                                                 |
 | ------ | --------------------------- | ---------------------------------------------------------------------- |

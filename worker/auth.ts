@@ -1,4 +1,9 @@
-import { parsePasswordHash, sha256, verifyPassword } from "../shared/password";
+import {
+  parsePasswordHash,
+  sha256,
+  verifyPasswordProof,
+} from "../shared/password";
+import { PASSWORD_ITERATIONS, PROOF_PATTERN } from "../shared/password-proof";
 
 export interface AuthEnv {
   DB: D1Database;
@@ -73,7 +78,7 @@ function configured(env: AuthEnv): boolean {
     !!env.OWNER_EMAIL &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(env.OWNER_EMAIL) &&
     !!env.OWNER_PASSWORD_HASH &&
-    !!parsePasswordHash(env.OWNER_PASSWORD_HASH)
+    parsePasswordHash(env.OWNER_PASSWORD_HASH)?.version === 2
   );
 }
 
@@ -120,7 +125,7 @@ export async function authenticate(
 
 async function loginBody(
   request: Request,
-): Promise<{ email: string; password: string } | Response> {
+): Promise<{ email: string; passwordProof: string } | Response> {
   if (
     !request.headers
       .get("Content-Type")
@@ -158,7 +163,7 @@ async function loginBody(
     bytes.set(chunk, offset);
     offset += chunk.length;
   }
-  let data: { email?: unknown; password?: unknown };
+  let data: { email?: unknown; passwordProof?: unknown };
   try {
     data = JSON.parse(new TextDecoder().decode(bytes));
   } catch {
@@ -170,23 +175,35 @@ async function loginBody(
   if (
     !data ||
     typeof data.email !== "string" ||
-    typeof data.password !== "string" ||
+    typeof data.passwordProof !== "string" ||
     !data.email.trim() ||
     data.email.length > 254 ||
-    !data.password ||
-    data.password.length > 1024
+    !PROOF_PATTERN.test(data.passwordProof)
   )
     return Response.json(
       { error: "Enter your email and password." },
       { status: 400 },
     );
-  return { email: data.email.trim().toLowerCase(), password: data.password };
+  return {
+    email: data.email.trim().toLowerCase(),
+    passwordProof: data.passwordProof,
+  };
 }
 
 export async function authRoute(
   request: Request,
   env: AuthEnv,
 ): Promise<Response> {
+  const path = new URL(request.url).pathname;
+  if (path === "/api/auth/parameters" && request.method === "GET") {
+    if (localBypass(request, env)) return Response.json({ local: true });
+    if (!configured(env)) return setupRequired();
+    // The salt and work factor are public; never return the stored verifier.
+    return Response.json({
+      salt: parsePasswordHash(env.OWNER_PASSWORD_HASH!)!.salt,
+      iterations: PASSWORD_ITERATIONS,
+    });
+  }
   if (request.method !== "POST")
     return Response.json({ error: "Method not allowed." }, { status: 405 });
   if (!sameOrigin(request, env))
@@ -194,7 +211,6 @@ export async function authRoute(
       { error: "Cross-origin sign-in changes are not allowed." },
       { status: 403 },
     );
-  const path = new URL(request.url).pathname;
   if (path === "/api/auth/logout") {
     const token = readToken(request, env);
     if (token)
@@ -237,7 +253,10 @@ export async function authRoute(
         },
       },
     );
-  const valid = await verifyPassword(data.password, env.OWNER_PASSWORD_HASH!);
+  const valid = await verifyPasswordProof(
+    data.passwordProof,
+    env.OWNER_PASSWORD_HASH!,
+  );
   if (!valid || data.email !== env.OWNER_EMAIL!.trim().toLowerCase())
     return Response.json(
       { error: "Email or password is incorrect." },

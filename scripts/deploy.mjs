@@ -1,6 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { parsePasswordHash } from "../shared/password.ts";
+import { migratePasswordHash, parsePasswordHash } from "../shared/password.ts";
 
 const localBinary = (name) => `node_modules/.bin/${name}`;
 function run(binary, args, input) {
@@ -32,6 +32,9 @@ if (
   throw new Error("Set a real D1 database UUID.");
 if (!parsePasswordHash(process.env.OWNER_PASSWORD_HASH))
   throw new Error("Generate OWNER_PASSWORD_HASH with npm run auth:password.");
+const storedPasswordHash = await migratePasswordHash(
+  process.env.OWNER_PASSWORD_HASH,
+);
 if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(process.env.OWNER_EMAIL))
   throw new Error("Set your allowed login email.");
 // The base config deliberately has no comments, so it remains safe to parse as JSON.
@@ -74,6 +77,6 @@ if (process.argv.includes("--check")) {
   run(
     localBinary("wrangler"),
     ["secret", "bulk", "--config", "wrangler.production.json"],
-    JSON.stringify({ OWNER_PASSWORD_HASH: process.env.OWNER_PASSWORD_HASH }),
+    JSON.stringify({ OWNER_PASSWORD_HASH: storedPasswordHash }),
   );
 }

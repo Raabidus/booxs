@@ -141,7 +141,7 @@ describe("Worker API with real D1", () => {
       compatibilityFlags: ["nodejs_compat"],
       bindings: {
         OWNER_PASSWORD_HASH:
-          "pbkdf2-sha256$600000$" + "0".repeat(32) + "$" + "0".repeat(64),
+          "pbkdf2-sha256-v2$600000$" + "0".repeat(32) + "$" + "0".repeat(64),
         OWNER_EMAIL: "test@example.com",
       },
     });

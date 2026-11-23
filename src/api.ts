@@ -1,4 +1,8 @@
 import type { Book, BookInput, Metadata, Snapshot } from "../shared/books";
+import {
+  derivePasswordProof,
+  type PasswordParameters,
+} from "../shared/password-proof";
 
 export class ApiError extends Error {
   constructor(
@@ -41,11 +45,18 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  login: (email: string, password: string) =>
-    request<{ authenticated: boolean }>("/auth/login", {
+  login: async (email: string, password: string) => {
+    const parameters = await request<PasswordParameters & { local?: boolean }>(
+      "/auth/parameters",
+    );
+    const passwordProof = parameters.local
+      ? ""
+      : await derivePasswordProof(password, parameters);
+    return request<{ authenticated: boolean }>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password }),
-    }),
+      body: JSON.stringify({ email, passwordProof }),
+    });
+  },
   logout: () =>
     request<{ authenticated: boolean }>("/auth/logout", {
       method: "POST",
