@@ -14,7 +14,11 @@ const request = (
 ) =>
   mf.dispatchFetch("http://localhost/api" + path, {
     method,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: {
+      "Content-Type": "application/json",
+      Origin: "http://localhost",
+      ...headers,
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 const sample = {
@@ -32,17 +36,22 @@ beforeAll(async () => {
     write: false,
     format: "esm",
     target: "es2022",
+    external: ["node:*"],
   });
   script = output.outputFiles[0].text;
   mf = new Miniflare({
     modules: true,
     script,
     compatibilityDate: "2026-07-30",
+    compatibilityFlags: ["nodejs_compat"],
     d1Databases: ["DB"],
     bindings: { ENVIRONMENT: "local" },
   });
   const db = await mf.getD1Database("DB");
-  const sql = await readFile("migrations/0001_books.sql", "utf8");
+  const sql =
+    (await readFile("migrations/0001_books.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0002_auth.sql", "utf8"));
   await db.batch(
     sql
       .split(";")
@@ -124,14 +133,15 @@ describe("Worker API with real D1", () => {
     );
     expect(response.status).toBe(503);
   });
-  it("fails closed for missing and forged Access tokens", async () => {
+  it("fails closed for missing and forged session cookies", async () => {
     const production = new Miniflare({
       modules: true,
       script,
       compatibilityDate: "2026-07-30",
+      compatibilityFlags: ["nodejs_compat"],
       bindings: {
-        ACCESS_TEAM_DOMAIN: "https://booxs-test.cloudflareaccess.com",
-        ACCESS_AUD: "test-audience",
+        OWNER_PASSWORD_HASH:
+          "pbkdf2-sha256$600000$" + "0".repeat(32) + "$" + "0".repeat(64),
         OWNER_EMAIL: "test@example.com",
       },
     });
@@ -142,7 +152,7 @@ describe("Worker API with real D1", () => {
       expect(
         (
           await production.dispatchFetch("https://booxs.test/api/books", {
-            headers: { "Cf-Access-Jwt-Assertion": "forged-token" },
+            headers: { Cookie: "__Host-booxs_session=forged-token" },
           })
         ).status,
       ).toBe(401);

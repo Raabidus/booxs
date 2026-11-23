@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:migrate": "wrangler d1 migrations apply booxs --local --env local",
+    "auth:password": "node scripts/password.mjs",
     "deploy": "node --env-file-if-exists=.env.production scripts/deploy.mjs",
     "deploy:check": "node --env-file-if-exists=.env.production scripts/deploy.mjs --check"
   },
@@ -20,7 +21,6 @@
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "idb": "^8.0.3",
-    "jose": "^6.1.0",
     "lucide-react": "^0.468.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

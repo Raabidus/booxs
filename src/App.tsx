@@ -44,8 +44,16 @@ import {
   type Snapshot,
 } from "../shared/books";
 import { api, ApiError } from "./api";
-import { clearSnapshot, loadSnapshot, storeSnapshot } from "./storage";
+import {
+  clearSnapshot,
+  finishPendingLogout,
+  loadSnapshot,
+  pendingLogout,
+  setPendingLogout,
+  storeSnapshot,
+} from "./storage";
 import Scanner from "./Scanner";
+import Login from "./Login";
 
 type View = "library" | "scan";
 type Modal =
@@ -178,6 +186,7 @@ export default function App() {
   const [online, setOnline] = useState(navigator.onLine);
   const [reachable, setReachable] = useState(true);
   const [authRequired, setAuthRequired] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState("");
   const [cacheWarning, setCacheWarning] = useState("");
@@ -233,6 +242,11 @@ export default function App() {
     const task = (async () => {
       setSyncing(true);
       try {
+        if (await finishPendingLogout()) {
+          setAuthRequired(true);
+          setLoginOpen(true);
+          return;
+        }
         const next = await api.list();
         if (!active.current) return;
         await remember(next);
@@ -241,9 +255,15 @@ export default function App() {
         setNotice("");
       } catch (error) {
         if (!active.current) return;
-        setNotice((error as Error).message);
+        setNotice(
+          error instanceof ApiError &&
+            error.status === 401 &&
+            !snapshotRef.current
+            ? ""
+            : (error as Error).message,
+        );
         if (error instanceof ApiError) {
-          setAuthRequired(error.status === 401);
+          setAuthRequired(error.status === 401 || error.status === 503);
           setReachable(error.status !== 0);
         }
       } finally {
@@ -262,6 +282,15 @@ export default function App() {
     active.current = true;
     void (async () => {
       try {
+        if (await pendingLogout()) {
+          setAuthRequired(true);
+          setLoginOpen(true);
+          if (!cancelled) {
+            setReady(true);
+            void sync();
+          }
+          return;
+        }
         const saved = await loadSnapshot();
         if (!cancelled && saved) {
           snapshotRef.current = saved;
@@ -392,34 +421,65 @@ export default function App() {
     active.current = false;
     await syncInFlight.current;
     try {
+      await setPendingLogout(true);
       await clearSnapshot();
       snapshotRef.current = null;
       setSnapshot(null);
       setModal(null);
       setScanResult(null);
+      setScanIsbn("");
+      setQuery("");
+      setScanError("");
+      setView("library");
+      setAuthRequired(true);
+      setLoginOpen(true);
+      setNotice("");
       if ("caches" in window)
         for (const name of await caches.keys())
           if (name.startsWith("booxs-")) await caches.delete(name);
       if ("serviceWorker" in navigator)
         for (const registration of await navigator.serviceWorker.getRegistrations())
           await registration.unregister();
-      if (
-        navigator.onLine &&
-        !["localhost", "127.0.0.1"].includes(location.hostname)
-      )
-        location.assign("/cdn-cgi/access/logout");
-      else {
-        setAuthRequired(true);
-        setNotice(
-          "Local books cleared. Reconnect and sign in to download your library again.",
-        );
+      if (navigator.onLine) {
+        try {
+          await finishPendingLogout();
+        } catch {
+          setNotice(
+            "Local books cleared. Reconnect to finish signing out before your next sign-in.",
+          );
+        }
       }
     } catch {
-      active.current = true;
+      // Storage failure must not prevent server-side logout while online.
+      if (navigator.onLine) {
+        try {
+          await api.logout();
+        } catch {
+          /* Keep the local view locked. */
+        }
+      }
+      snapshotRef.current = null;
+      setSnapshot(null);
+      setModal(null);
+      setScanResult(null);
+      setAuthRequired(true);
+      setLoginOpen(true);
       setNotice(
         "Local storage could not be cleared. Close this app and clear its website data in browser settings.",
       );
     }
+  }
+
+  async function signIn(email: string, password: string) {
+    await syncInFlight.current;
+    await finishPendingLogout();
+    await api.login(email, password);
+    active.current = true;
+    setAuthRequired(false);
+    setLoginOpen(false);
+    setNotice("");
+    setReachable(true);
+    await sync();
   }
 
   const filtered = books.filter(
@@ -432,6 +492,17 @@ export default function App() {
     modal?.type === "detail"
       ? books.find((book) => book.id === modal.book.id) || modal.book
       : null;
+
+  if (authRequired && (loginOpen || !snapshot?.books.length))
+    return (
+      <Login
+        online={online && reachable}
+        notice={notice}
+        canBrowse={!!snapshot?.books.length}
+        onBrowse={() => setLoginOpen(false)}
+        onLogin={signIn}
+      />
+    );
 
   return (
     <div className="app-shell">
@@ -563,7 +634,7 @@ export default function App() {
                   {authRequired && (
                     <button
                       className="text-button"
-                      onClick={() => location.reload()}
+                      onClick={() => setLoginOpen(true)}
                     >
                       Sign in
                     </button>

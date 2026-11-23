@@ -5,7 +5,7 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(CACHE);
-      // Never cache an Access login page returned instead of a protected asset.
+      // Reject redirects and invalid assets rather than caching an error page.
       await Promise.all(
         ASSETS.map(async (path) => {
           const response = await fetch(
@@ -50,7 +50,7 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     (async () => {
       const cache = await caches.open(CACHE);
-      // Navigation stays network-first so an online session is checked by Access.
+      // Navigation stays network-first; private API responses are never cached.
       if (event.request.mode === "navigate") {
         try {
           return await fetch(event.request);

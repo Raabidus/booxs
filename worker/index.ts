@@ -1,5 +1,5 @@
 import { bookInputSchema, normalizeIsbn, type Book } from "../shared/books";
-import { authenticate, type AuthEnv } from "./auth";
+import { authenticate, authRoute, sameOrigin, type AuthEnv } from "./auth";
 import { lookupMetadata, ProviderError, searchMetadata } from "./metadata";
 
 interface Env extends AuthEnv {
@@ -39,6 +39,8 @@ async function readInput(request: Request) {
 }
 
 async function api(request: Request, env: Env): Promise<Response> {
+  if (new URL(request.url).pathname.startsWith("/api/auth/"))
+    return authRoute(request, env);
   const authError = await authenticate(request, env);
   if (authError) return authError;
   const url = new URL(request.url);
@@ -47,8 +49,7 @@ async function api(request: Request, env: Env): Promise<Response> {
     return json({ error: "Method not allowed." }, 405);
   if (request.method !== "GET") {
     // Reject cross-origin browser writes, including requests with otherwise valid cookies.
-    const origin = request.headers.get("origin");
-    if (origin && origin !== url.origin)
+    if (!sameOrigin(request, env))
       return json({ error: "Cross-origin changes are not allowed." }, 403);
   }
   if (path === "/api/health" && request.method === "GET")

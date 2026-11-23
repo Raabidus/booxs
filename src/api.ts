@@ -26,11 +26,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       "Cannot reach your library. Your downloaded books are still available.",
     );
   }
-  if (
-    response.type === "opaqueredirect" ||
-    response.status === 401 ||
-    response.status === 403
-  )
+  if (response.type === "opaqueredirect")
     throw new ApiError("Please sign in again to update your library.", 401);
   if (!response.headers.get("content-type")?.includes("application/json"))
     throw new ApiError("Please sign in again to update your library.", 401);
@@ -45,6 +41,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  login: (email: string, password: string) =>
+    request<{ authenticated: boolean }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () =>
+    request<{ authenticated: boolean }>("/auth/logout", {
+      method: "POST",
+      body: "{}",
+    }),
   list: () => request<Snapshot>("/books"),
   isbn: (isbn: string) =>
     request<{ book: Book | null }>(
