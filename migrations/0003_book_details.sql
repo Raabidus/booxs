@@ -1,0 +1,2 @@
+ALTER TABLE books ADD COLUMN language TEXT;
+ALTER TABLE books ADD COLUMN publisher TEXT;

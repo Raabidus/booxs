@@ -64,6 +64,8 @@ type Modal =
 const empty: BookInput = {
   title: "",
   author: null,
+  language: null,
+  publisher: null,
   isbn: null,
   published_year: null,
   ownership: "neither",
@@ -124,6 +126,25 @@ function Badges({ book }: { book: Pick<Book, "ownership" | "reading"> }) {
         {readingLabels[book.reading]}
       </span>
     </div>
+  );
+}
+
+function BookFacts({ book }: { book: Partial<Metadata> | null }) {
+  return (
+    <dl className="book-facts scan-book-facts" aria-label="Book information">
+      {[
+        ["Title", book?.title],
+        ["Author", book?.author],
+        ["Language", book?.language],
+        ["Publisher", book?.publisher],
+        ["Year published", book?.published_year],
+      ].map(([label, value]) => (
+        <div key={label}>
+          <dt>{label}</dt>
+          <dd>{value ?? "Not available"}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -201,9 +222,11 @@ export default function App() {
     isbn: string;
     book: Book | null;
     cached: boolean;
+    metadata?: Metadata | null;
+    metadataStatus?: "loading" | "done";
+    metadataError?: string;
   } | null>(null);
   const [scanError, setScanError] = useState("");
-  const [metadataBusy, setMetadataBusy] = useState(false);
   const [toast, setToast] = useState("");
   const syncInFlight = useRef<Promise<void> | null>(null);
   const active = useRef(true);
@@ -335,6 +358,9 @@ export default function App() {
     if (view !== "scan") {
       scanSequence.current++;
       setScanBusy(false);
+      setScanResult((current) =>
+        current?.metadataStatus === "loading" ? null : current,
+      );
     }
   }, [view]);
 
@@ -387,8 +413,15 @@ export default function App() {
     setScanBusy(true);
     try {
       const result = await api.isbn(isbn);
-      if (sequence === scanSequence.current)
-        setScanResult({ isbn, book: result.book, cached: false });
+      if (sequence === scanSequence.current) {
+        setScanResult({
+          isbn,
+          book: result.book,
+          cached: false,
+          metadataStatus: result.book ? "done" : "loading",
+        });
+        if (!result.book) void loadScanMetadata(isbn, sequence);
+      }
     } catch (error) {
       if (sequence !== scanSequence.current) return;
       setScanResult({ isbn, book: localBook, cached: true });
@@ -400,21 +433,37 @@ export default function App() {
     }
   }
 
-  async function addScanned() {
-    if (!scanResult || !canWrite) return;
-    setMetadataBusy(true);
-    setScanError("");
-    let initial: Partial<BookInput> = { isbn: scanResult.isbn };
+  async function loadScanMetadata(isbn: string, sequence: number) {
     try {
-      const { book } = await api.metadata(scanResult.isbn);
-      if (book) initial = { ...initial, ...book };
-      else setToast("No book details found. You can add them yourself.");
+      const { book: metadata } = await api.metadata(isbn);
+      if (sequence === scanSequence.current)
+        setScanResult((current) =>
+          current?.isbn === isbn
+            ? { ...current, metadata, metadataStatus: "done" }
+            : current,
+        );
     } catch (error) {
-      setToast((error as Error).message);
-    } finally {
-      setMetadataBusy(false);
+      if (sequence !== scanSequence.current) return;
+      setScanResult((current) =>
+        current?.isbn === isbn
+          ? {
+              ...current,
+              metadataStatus: "done",
+              metadataError: (error as Error).message,
+            }
+          : current,
+      );
+      if (error instanceof ApiError && error.status === 401)
+        setAuthRequired(true);
     }
-    setModal({ type: "form", initial });
+  }
+
+  function addScanned() {
+    if (!scanResult || !canWrite) return;
+    setModal({
+      type: "form",
+      initial: { ...scanResult.metadata, isbn: scanResult.isbn },
+    });
   }
 
   async function signOut() {
@@ -1008,6 +1057,7 @@ export default function App() {
                               <Badges book={scanResult.book} />
                             </div>
                           </div>
+                          <BookFacts book={scanResult.book} />
                           <button
                             className="button primary"
                             onClick={() =>
@@ -1026,14 +1076,35 @@ export default function App() {
                           <p>
                             {scanResult.cached
                               ? "This ISBN isn’t in your saved copy. Connect to check the latest library or add this edition."
-                              : "This edition isn’t in your library. Add its details and decide where it belongs."}
+                              : "This edition isn’t in your library. Review its details and decide where it belongs."}
                           </p>
+                          {scanResult.metadataStatus === "loading" ? (
+                            <p className="metadata-status" role="status">
+                              <LoaderCircle className="spin" size={18} />
+                              Finding book details…
+                            </p>
+                          ) : (
+                            <>
+                              <BookFacts book={scanResult.metadata || null} />
+                              {!scanResult.metadata && (
+                                <p className="field-hint">
+                                  {scanResult.metadataError ||
+                                    (scanResult.cached
+                                      ? "Connect to look up book details."
+                                      : "No book details found for this ISBN. You can enter them when adding the book.")}
+                                </p>
+                              )}
+                            </>
+                          )}
                           <button
                             className="button primary"
-                            disabled={!canWrite || metadataBusy}
-                            onClick={() => void addScanned()}
+                            disabled={
+                              !canWrite ||
+                              scanResult.metadataStatus === "loading"
+                            }
+                            onClick={addScanned}
                           >
-                            {metadataBusy ? (
+                            {scanResult.metadataStatus === "loading" ? (
                               <LoaderCircle className="spin" size={17} />
                             ) : (
                               <Plus size={17} />
@@ -1193,6 +1264,8 @@ function BookForm({
       ? {
           title: book.title,
           author: book.author,
+          language: book.language ?? null,
+          publisher: book.publisher ?? null,
           isbn: book.isbn,
           published_year: book.published_year,
           ownership: book.ownership,
@@ -1407,6 +1480,32 @@ function BookForm({
             />
           </div>
         </div>
+        <div className="form-columns">
+          <div>
+            <label htmlFor="book-language">
+              Language <span>optional</span>
+            </label>
+            <input
+              id="book-language"
+              value={form.language || ""}
+              onChange={(event) => change("language", event.target.value || null)}
+              placeholder="e.g. Czech"
+              maxLength={255}
+            />
+          </div>
+          <div>
+            <label htmlFor="book-publisher">
+              Publisher <span>optional</span>
+            </label>
+            <input
+              id="book-publisher"
+              value={form.publisher || ""}
+              onChange={(event) => change("publisher", event.target.value || null)}
+              placeholder="Publisher’s name"
+              maxLength={255}
+            />
+          </div>
+        </div>
         <fieldset>
           <legend>Where does it belong?</legend>
           <p className="field-hint">Choose one ownership state.</p>
@@ -1538,6 +1637,14 @@ function BookDetail({
         <p className="detail-author">{book.author || "Author not added"}</p>
         <Badges book={book} />
         <dl className="book-facts">
+          <div>
+            <dt>Language</dt>
+            <dd>{book.language || "Not added"}</dd>
+          </div>
+          <div>
+            <dt>Publisher</dt>
+            <dd>{book.publisher || "Not added"}</dd>
+          </div>
           <div>
             <dt>ISBN</dt>
             <dd>{book.isbn || "Not added"}</dd>

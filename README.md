@@ -109,6 +109,8 @@ The service worker caches only app assets. Personal book data is stored separate
 
 Open Library is optional enrichment, not the source of your personal library. A missed ISBN, provider timeout, or rate limit never prevents manual entry. Search results fill only title/author, because work-level search can mix editions; edition ISBN/year comes from an explicit ISBN lookup or manual entry. Saved fields remain editable.
 
+After an ISBN check, the scan result displays the title, author, language, publisher, and publication year. Saved books use their library details, including offline; new editions look up Open Library automatically before adding. Missing details remain marked as unavailable and can be entered manually. Language and publisher are editable and saved with the book.
+
 Metadata is requested through the Worker with a Booxs identification header/contact email, an eight-second timeout, and a 24-hour public metadata cache. Personal states never enter that cache. Searches are submitted explicitly, not on every keystroke. Follow [Open Library's usage guidelines](https://openlibrary.org/developers/api), including registering the application if required by its current policy.
 
 ## API
@@ -131,6 +133,8 @@ Book endpoints require authentication. `PATCH` accepts the full editable book pa
 {
   "title": "Matilda",
   "author": "Roald Dahl",
+  "language": "English",
+  "publisher": "Puffin",
   "isbn": "9780140328721",
   "published_year": 1988,
   "ownership": "want_to_buy",
@@ -138,7 +142,7 @@ Book endpoints require authentication. `PATCH` accepts the full editable book pa
 }
 ```
 
-Title is required; author, ISBN, and year are optional. Allowed ownership values are `neither`, `want_to_buy`, `owned`; reading values are `unread`, `reading`, `finished`. Responses add a UUID `id` and UTC `created_at` / `updated_at` timestamps. D1 enforces valid state values and unique non-null ISBNs as well as server validation.
+Title is required; author, language, publisher, ISBN, and year are optional. Allowed ownership values are `neither`, `want_to_buy`, `owned`; reading values are `unread`, `reading`, `finished`. Responses add a UUID `id` and UTC `created_at` / `updated_at` timestamps. D1 enforces valid state values and unique non-null ISBNs as well as server validation.
 
 ## Before calling the release verified
 

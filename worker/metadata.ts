@@ -56,6 +56,12 @@ function year(value: unknown): number | null {
   return match ? Number(match[0]) : null;
 }
 
+function languageName(key: string | undefined): string | null {
+  const code = key?.match(/^\/languages\/([a-z]{2,3})$/)?.[1];
+  if (!code) return null;
+  return new Intl.DisplayNames(["en"], { type: "language" }).of(code) || code;
+}
+
 export async function lookupMetadata(
   isbn: string,
   contact: string,
@@ -64,13 +70,21 @@ export async function lookupMetadata(
   url.search = new URLSearchParams({
     bibkeys: `ISBN:${isbn}`,
     format: "json",
-    jscmd: "data",
+    jscmd: "details",
   }).toString();
   const data = (await openLibrary(url, contact)) as Record<
     string,
-    { title?: string; authors?: { name?: string }[]; publish_date?: string }
+    {
+      details?: {
+        title?: string;
+        authors?: { name?: string }[];
+        languages?: { key?: string }[];
+        publishers?: string[];
+        publish_date?: string;
+      };
+    }
   >;
-  const item = data[`ISBN:${isbn}`];
+  const item = data[`ISBN:${isbn}`]?.details;
   if (!item?.title) return null;
   return {
     title: item.title.slice(0, 255),
@@ -80,6 +94,13 @@ export async function lookupMetadata(
         .filter(Boolean)
         .join(", ")
         .slice(0, 255) || null,
+    language:
+      item.languages
+        ?.map((language) => languageName(language.key))
+        .filter(Boolean)
+        .join(", ")
+        .slice(0, 255) || null,
+    publisher: item.publishers?.filter(Boolean).join(", ").slice(0, 255) || null,
     isbn,
     published_year: year(item.publish_date),
   };
@@ -108,6 +129,8 @@ export async function searchMetadata(
     .map((item) => ({
       title: item.title!.slice(0, 255),
       author: item.author_name?.join(", ").slice(0, 255) || null,
+      language: null,
+      publisher: null,
       isbn: null,
       published_year: null,
     }));

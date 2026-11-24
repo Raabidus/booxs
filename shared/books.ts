@@ -66,6 +66,20 @@ export const bookInputSchema = z
       .nullable()
       .transform((value) => value || null)
       .default(null),
+    language: z
+      .string()
+      .trim()
+      .max(255)
+      .nullable()
+      .transform((value) => value || null)
+      .default(null),
+    publisher: z
+      .string()
+      .trim()
+      .max(255)
+      .nullable()
+      .transform((value) => value || null)
+      .default(null),
     isbn: isbnSchema.default(null),
     published_year: z.number().int().min(0).max(2100).nullable().default(null),
     ownership: z.enum(["neither", "want_to_buy", "owned"]).default("neither"),
@@ -82,6 +96,8 @@ export interface Book extends BookInput {
 export interface Metadata {
   title: string;
   author: string | null;
+  language: string | null;
+  publisher: string | null;
   isbn: string | null;
   published_year: number | null;
 }

@@ -1511,6 +1511,30 @@ input::placeholder {
   text-align: right;
   overflow-wrap: anywhere;
 }
+.scan-book-facts {
+  margin: 24px 0 20px;
+}
+.scan-book-facts > div {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.scan-book-facts dt {
+  flex-shrink: 0;
+  color: #66745f;
+}
+.scan-book-facts dd {
+  min-width: 0;
+  color: var(--dark);
+}
+.scan-results > .metadata-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #66745f;
+}
+.metadata-status svg {
+  flex-shrink: 0;
+}
 .delete-confirm {
   text-align: left;
   border: 1px solid #ebcdc2;

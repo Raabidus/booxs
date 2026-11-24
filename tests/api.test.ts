@@ -24,6 +24,8 @@ const request = (
 const sample = {
   title: "  Matilda  ",
   author: "Roald Dahl",
+  language: "English",
+  publisher: "Puffin",
   isbn: "0140328726",
   ownership: "want_to_buy",
   reading: "finished",
@@ -51,7 +53,9 @@ beforeAll(async () => {
   const sql =
     (await readFile("migrations/0001_books.sql", "utf8")) +
     "\n" +
-    (await readFile("migrations/0002_auth.sql", "utf8"));
+    (await readFile("migrations/0002_auth.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0003_book_details.sql", "utf8"));
   await db.batch(
     sql
       .split(";")
@@ -73,6 +77,8 @@ describe("Worker API with real D1", () => {
     book = (await response.json()) as Book;
     expect(book).toMatchObject({
       title: "Matilda",
+      language: "English",
+      publisher: "Puffin",
       isbn: "9780140328721",
       ownership: "want_to_buy",
       reading: "finished",
@@ -95,11 +101,15 @@ describe("Worker API with real D1", () => {
       ...sample,
       ownership: "owned",
       reading: "reading",
+      language: "Czech",
+      publisher: "Another publisher",
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       ownership: "owned",
       reading: "reading",
+      language: "Czech",
+      publisher: "Another publisher",
     });
     expect((await request("/books/" + book.id)).status).toBe(200);
     expect(
@@ -117,8 +127,14 @@ describe("Worker API with real D1", () => {
     expect((await request("/books", "POST", { title: "  " })).status).toBe(422);
   });
   it("allows several manually entered books without ISBNs", async () => {
-    for (const title of ["No ISBN one", "No ISBN two"])
-      expect((await request("/books", "POST", { title })).status).toBe(201);
+    for (const title of ["No ISBN one", "No ISBN two"]) {
+      const response = await request("/books", "POST", { title });
+      expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({
+        language: null,
+        publisher: null,
+      });
+    }
   });
   it("rejects cross-origin writes and a production hostname with the local flag", async () => {
     expect(

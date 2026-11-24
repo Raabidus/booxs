@@ -134,11 +134,13 @@ async function api(request: Request, env: Env): Promise<Response> {
     try {
       if (id) {
         await env.DB.prepare(
-          "UPDATE books SET title=?, author=?, isbn=?, published_year=?, ownership=?, reading=?, updated_at=? WHERE id=?",
+          "UPDATE books SET title=?, author=?, language=?, publisher=?, isbn=?, published_year=?, ownership=?, reading=?, updated_at=? WHERE id=?",
         )
           .bind(
             book.title,
             book.author,
+            book.language,
+            book.publisher,
             book.isbn,
             book.published_year,
             book.ownership,
@@ -149,12 +151,14 @@ async function api(request: Request, env: Env): Promise<Response> {
           .run();
       } else {
         await env.DB.prepare(
-          "INSERT INTO books (id,title,author,isbn,published_year,ownership,reading,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+          "INSERT INTO books (id,title,author,language,publisher,isbn,published_year,ownership,reading,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
         )
           .bind(
             bookId,
             book.title,
             book.author,
+            book.language,
+            book.publisher,
             book.isbn,
             book.published_year,
             book.ownership,

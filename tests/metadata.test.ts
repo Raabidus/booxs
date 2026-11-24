@@ -4,12 +4,16 @@ import { lookupMetadata, searchMetadata } from "../worker/metadata";
 afterEach(() => vi.unstubAllGlobals());
 describe("optional metadata enrichment", () => {
   it("reads details for the exact edition and identifies the app", async () => {
-    const fetch = vi.fn(async () =>
+    const fetch = vi.fn(async (_url: URL, _options: RequestInit) =>
       Response.json({
         "ISBN:9780140328721": {
-          title: "Matilda",
-          authors: [{ name: "Roald Dahl" }],
-          publish_date: "October 1988",
+          details: {
+            title: "Matilda",
+            authors: [{ name: "Roald Dahl" }],
+            publish_date: "October 1988",
+            languages: [{ key: "/languages/eng" }],
+            publishers: ["Puffin"],
+          },
         },
       }),
     );
@@ -17,6 +21,8 @@ describe("optional metadata enrichment", () => {
     expect(await lookupMetadata("9780140328721", "owner@example.com")).toEqual({
       title: "Matilda",
       author: "Roald Dahl",
+      language: "English",
+      publisher: "Puffin",
       isbn: "9780140328721",
       published_year: 1988,
     });
@@ -29,6 +35,37 @@ describe("optional metadata enrichment", () => {
         signal: expect.any(AbortSignal),
       }),
     );
+    expect(fetch.mock.calls[0][0].searchParams.get("jscmd")).toBe("details");
+  });
+  it("keeps edition metadata with missing optional fields and multiple languages/publishers", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({
+        "ISBN:9788027762125": {
+          details: {
+            title: "Atomové šelmy: Aréna",
+            languages: [{ key: "/languages/cze" }, { key: "/languages/slo" }],
+            publishers: ["Fobos", "Dobrovský"],
+          },
+        },
+      })),
+    );
+    expect(await lookupMetadata("9788027762125", "")).toMatchObject({
+      language: "Czech, Slovak",
+      publisher: "Fobos, Dobrovský",
+      author: null,
+      published_year: null,
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json({
+        "ISBN:9788027762125": { details: { title: "A book" } },
+      })),
+    );
+    expect(await lookupMetadata("9788027762125", "")).toMatchObject({
+      language: null,
+      publisher: null,
+    });
   });
   it("returns a normal miss when an ISBN is absent", async () => {
     vi.stubGlobal(
@@ -57,6 +94,8 @@ describe("optional metadata enrichment", () => {
       {
         title: "Matilda",
         author: "Roald Dahl",
+        language: null,
+        publisher: null,
         isbn: null,
         published_year: null,
       },

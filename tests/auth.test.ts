@@ -92,7 +92,9 @@ beforeAll(async () => {
   db = (await mf.getD1Database("DB")) as unknown as D1Database;
   const sql =
     (await readFile("migrations/0001_books.sql", "utf8")) +
-    (await readFile("migrations/0002_auth.sql", "utf8"));
+    (await readFile("migrations/0002_auth.sql", "utf8")) +
+    "\n" +
+    (await readFile("migrations/0003_book_details.sql", "utf8"));
   await db.batch(
     sql
       .split(";")
