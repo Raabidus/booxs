@@ -14,7 +14,11 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs = 15000,
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch("/api" + path, {
@@ -23,7 +27,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
       redirect: "manual",
       cache: "no-store",
       headers: { "Content-Type": "application/json", ...options.headers },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
     throw new ApiError(
@@ -70,6 +74,8 @@ export const api = {
   metadata: (isbn: string) =>
     request<{ book: Metadata | null }>(
       "/metadata/isbn?isbn=" + encodeURIComponent(isbn),
+      {},
+      25000,
     ),
   search: (q: string) =>
     request<{ items: Metadata[] }>(

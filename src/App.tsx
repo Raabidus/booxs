@@ -1094,6 +1094,19 @@ export default function App() {
                                       : "No book details found for this ISBN. You can enter them when adding the book.")}
                                 </p>
                               )}
+                              {scanResult.metadataError && canWrite && (
+                                <div>
+                                  <button
+                                    className="text-button"
+                                    onClick={() =>
+                                      void checkIsbn(scanResult.isbn)
+                                    }
+                                  >
+                                    <RefreshCw size={16} />
+                                    Retry book details
+                                  </button>
+                                </div>
+                              )}
                             </>
                           )}
                           <button
@@ -1488,7 +1501,9 @@ function BookForm({
             <input
               id="book-language"
               value={form.language || ""}
-              onChange={(event) => change("language", event.target.value || null)}
+              onChange={(event) =>
+                change("language", event.target.value || null)
+              }
               placeholder="e.g. Czech"
               maxLength={255}
             />
@@ -1500,7 +1515,9 @@ function BookForm({
             <input
               id="book-publisher"
               value={form.publisher || ""}
-              onChange={(event) => change("publisher", event.target.value || null)}
+              onChange={(event) =>
+                change("publisher", event.target.value || null)
+              }
               placeholder="Publisher’s name"
               maxLength={255}
             />

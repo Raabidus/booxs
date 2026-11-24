@@ -1,6 +1,41 @@
 import { normalizeIsbn, type Metadata } from "../shared/books";
 
-export class ProviderError extends Error {}
+interface ProviderFailure {
+  provider?: string;
+  status?: number;
+  reason?: "http" | "network" | "timeout" | "parse";
+  retryable?: boolean;
+  retryAfterMs?: number;
+}
+
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    readonly failure: ProviderFailure = {},
+  ) {
+    super(message);
+  }
+}
+
+function retryAfterMs(value: string | null): number | undefined {
+  if (!value?.trim()) return undefined;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+function connectionError(provider: string, error: unknown): ProviderError {
+  const timeout =
+    error instanceof Error &&
+    (error.name === "TimeoutError" || error.name === "AbortError");
+  return new ProviderError(
+    timeout
+      ? `${provider} took too long to respond. Try again, or enter the details manually.`
+      : `${provider} could not be reached. Try again, or enter the details manually.`,
+    { provider, reason: timeout ? "timeout" : "network", retryable: true },
+  );
+}
 
 async function providerJson(
   url: URL,
@@ -25,22 +60,36 @@ async function providerJson(
       },
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    throw new ProviderError(
-      "Book details are unavailable right now. You can still enter them manually.",
-    );
+  } catch (error) {
+    throw connectionError(provider, error);
   }
   if (response.status === 404) return {};
-  if (!response.ok)
-    throw new ProviderError(
-      `${provider} is busy. Try again later, or enter the details manually.`,
-    );
+  if (!response.ok) {
+    const status = response.status;
+    const message =
+      status === 429
+        ? `${provider} is limiting requests. Try again shortly, or enter the details manually.`
+        : status === 401 || status === 403
+          ? `${provider} did not allow this lookup. You can enter the details manually.`
+          : status >= 500
+            ? `${provider} is temporarily unavailable. Try again, or enter the details manually.`
+            : `${provider} could not complete this lookup. You can enter the details manually.`;
+    throw new ProviderError(message, {
+      provider,
+      status,
+      reason: "http",
+      retryable: [429, 500, 502, 503, 504].includes(status),
+      retryAfterMs: retryAfterMs(response.headers.get("Retry-After")),
+    });
+  }
   let data: unknown;
   try {
     data = await response.json();
-  } catch {
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) throw connectionError(provider, error);
     throw new ProviderError(
       "Book details could not be read. Please enter them manually.",
+      { provider, reason: "parse" },
     );
   }
   if (cache)
@@ -54,6 +103,21 @@ async function providerJson(
       }),
     );
   return data;
+}
+
+async function czechLibraryJson(url: URL, contact: string): Promise<unknown> {
+  try {
+    return await providerJson(url, contact, "Knihovny.cz", 6000);
+  } catch (error) {
+    if (!(error instanceof ProviderError) || !error.failure.retryable)
+      throw error;
+    const delayMs = error.failure.retryAfterMs ?? 250;
+    // Do not retry early when the provider asks for a longer pause. One retry
+    // fits inside the metadata client's 25-second request deadline.
+    if (delayMs > 2000) throw error;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    return providerJson(url, contact, "Knihovny.cz", 6000);
+  }
 }
 
 export function openLibrary(url: URL, contact: string): Promise<unknown> {
@@ -162,10 +226,11 @@ async function lookupCzechLibrary(
     "rawData",
   ])
     url.searchParams.append("field[]", field);
-  const data = object(await providerJson(url, contact, "Knihovny.cz", 6000));
+  const data = object(await czechLibraryJson(url, contact));
   if (data.status !== "OK" || !Array.isArray(data.records))
     throw new ProviderError(
       "Czech book details could not be read. Please enter them manually.",
+      { provider: "Knihovny.cz", reason: "parse" },
     );
   const records = data.records.map(object).filter(
     (record) =>
@@ -228,8 +293,8 @@ export async function lookupMetadata(
   } catch (error) {
     primaryError = error;
   }
-  // Registration group 80 covers Czech and Slovak editions. Two six-second
-  // provider timeouts keep fallback lookup inside the client's 15-second limit.
+  // Registration group 80 covers Czech and Slovak editions. Six seconds per
+  // attempt plus one bounded catalog retry stays within the 25-second client limit.
   if (isbn.startsWith("97880")) {
     const book = await lookupCzechLibrary(isbn, contact);
     if (book) return book;

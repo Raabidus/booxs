@@ -201,9 +201,14 @@ export default {
     try {
       response = await api(request, env);
     } catch (error) {
-      if (error instanceof ProviderError)
+      if (error instanceof ProviderError) {
+        console.warn("Book metadata provider failed", {
+          provider: error.failure.provider,
+          status: error.failure.status,
+          reason: error.failure.reason,
+        });
         response = json({ error: error.message }, 502);
-      else {
+      } else {
         console.error(
           "Booxs request failed",
           error instanceof Error ? error.name : "UnknownError",
