@@ -1,0 +1,20 @@
+{
+  "status": "OK",
+  "resultCount": 1,
+  "records": [
+    {
+      "title": "Atomové šelmy. Aréna",
+      "titleStatement": "František Kotleta, Kristýna Sněgoňová",
+      "isbns": ["978-80-277-6212-5"],
+      "publishers": ["Dobrovský s.r.o.,"],
+      "publicationDates": ["2026"],
+      "languages": [],
+      "formats": ["0/BOOKS/"],
+      "rawData": {
+        "parent_data": {
+          "language": ["Czech"]
+        }
+      }
+    }
+  ]
+}

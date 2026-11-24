@@ -107,11 +107,11 @@ The service worker caches only app assets. Personal book data is stored separate
 
 ## Book metadata
 
-Open Library is optional enrichment, not the source of your personal library. A missed ISBN, provider timeout, or rate limit never prevents manual entry. Search results fill only title/author, because work-level search can mix editions; edition ISBN/year comes from an explicit ISBN lookup or manual entry. Saved fields remain editable.
+Open Library is the primary optional metadata source. For Czech/Slovak editions (ISBN registration group 80), an Open Library miss or failure falls back to the public [Knihovny.cz API](https://www.knihovny.cz/api). The fallback accepts only records whose normalized ISBN exactly matches the requested edition, preferring a dedicated print record. The catalog publisher may be the publishing company (for example, Dobrovský s.r.o.) rather than its imprint (Fobos). Metadata is optional enrichment, not the source of your personal library. A missed ISBN, provider timeout, or rate limit never prevents manual entry. Title/author search still uses Open Library and fills only title/author, because work-level search can mix editions; edition details come from an explicit ISBN lookup or manual entry. Saved fields remain editable.
 
-After an ISBN check, the scan result displays the title, author, language, publisher, and publication year. Saved books use their library details, including offline; new editions look up Open Library automatically before adding. Missing details remain marked as unavailable and can be entered manually. Language and publisher are editable and saved with the book.
+After an ISBN check, the scan result displays the title, author, language, publisher, and publication year. Saved books use their library details, including offline; new editions look up metadata automatically before adding. Missing details remain marked as unavailable and can be entered manually. Language and publisher are editable and saved with the book.
 
-Metadata is requested through the Worker with a Booxs identification header/contact email, an eight-second timeout, and a 24-hour public metadata cache. Personal states never enter that cache. Searches are submitted explicitly, not on every keystroke. Follow [Open Library's usage guidelines](https://openlibrary.org/developers/api), including registering the application if required by its current policy.
+Metadata is requested through the Worker with a Booxs identification header/contact email and a 24-hour public metadata cache. ISBN lookups allow six seconds per provider (up to twelve seconds total); title/author search allows eight seconds. Personal states never enter that cache. Searches are submitted explicitly, not on every keystroke. Knihovny.cz needs no API key for these public lookups. Follow [Open Library's usage guidelines](https://openlibrary.org/developers/api), including registering the application if required by its current policy.
 
 ## API
 
@@ -126,7 +126,7 @@ Book endpoints require authentication. `PATCH` accepts the full editable book pa
 | PATCH  | `/api/books/:id`            | Updated book                                                           |
 | DELETE | `/api/books/:id`            | `{ deleted: id }`, or 404                                              |
 | GET    | `/api/books/isbn?isbn=…`    | `{ book }`, null when absent                                           |
-| GET    | `/api/metadata/isbn?isbn=…` | `{ book }` with optional Open Library details                          |
+| GET    | `/api/metadata/isbn?isbn=…` | `{ book }` with optional Open Library / Knihovny.cz details            |
 | GET    | `/api/metadata/search?q=…`  | `{ items }`, up to eight title/author results                          |
 
 ```json
