@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { Miniflare } from "miniflare";
+import { createFetchMock, Miniflare } from "miniflare";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
 import type { Book } from "../shared/books";
@@ -32,6 +32,23 @@ const sample = {
 };
 
 beforeAll(async () => {
+  const fetchMock = createFetchMock();
+  fetchMock.disableNetConnect();
+  fetchMock
+    .get("https://openlibrary.org")
+    .intercept({ path: /\/api\/books\?/ })
+    .reply(200, {})
+    .persist();
+  fetchMock
+    .get("https://www.knihovny.cz")
+    .intercept({ path: /lookfor=9788027762132/ })
+    .reply(418, "Rejected server request")
+    .persist();
+  fetchMock
+    .get("https://www.knihovny.cz")
+    .intercept({ path: /lookfor=9788027762125/ })
+    .reply(429, "Rate limited", { headers: { "Retry-After": "60" } })
+    .persist();
   const output = await build({
     entryPoints: ["worker/index.ts"],
     bundle: true,
@@ -42,6 +59,7 @@ beforeAll(async () => {
   });
   script = output.outputFiles[0].text;
   mf = new Miniflare({
+    fetchMock,
     modules: true,
     script,
     compatibilityDate: "2026-07-30",
@@ -183,5 +201,36 @@ describe("Worker API with real D1", () => {
       await (await request("/books/isbn?isbn=9780140328721")).json(),
     ).toEqual({ book: null });
     expect((await request("/books/" + book.id, "DELETE")).status).toBe(404);
+  });
+});
+
+describe("metadata browser fallback hint", () => {
+  it("marks a catalog rejection for browser lookup after authentication", async () => {
+    const response = await request("/metadata/isbn?isbn=9788027762132");
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error:
+        "Knihovny.cz did not allow this lookup. You can enter the details manually.",
+      metadataFallback: "knihovny",
+    });
+  });
+
+  it("does not suggest moving rate-limited requests to another client", async () => {
+    const response = await request("/metadata/isbn?isbn=9788027762125");
+    expect(response.status).toBe(502);
+    const data = (await response.json()) as Record<string, unknown>;
+    expect(data.error).toMatch(/limiting requests/);
+    expect(data).not.toHaveProperty("metadataFallback");
+  });
+
+  it("does not offer metadata fallback before authentication or for invalid ISBNs", async () => {
+    const unauthenticated = await mf.dispatchFetch(
+      "https://booxs.example.workers.dev/api/metadata/isbn?isbn=9788027762132",
+    );
+    expect(unauthenticated.status).toBe(503);
+    expect(await unauthenticated.json()).not.toHaveProperty("metadataFallback");
+    const invalid = await request("/metadata/isbn?isbn=9788027762133");
+    expect(invalid.status).toBe(422);
+    expect(await invalid.json()).not.toHaveProperty("metadataFallback");
   });
 });

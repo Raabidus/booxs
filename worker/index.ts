@@ -207,7 +207,16 @@ export default {
           status: error.failure.status,
           reason: error.failure.reason,
         });
-        response = json({ error: error.message }, 502);
+        const browserFallback =
+          error.failure.provider === "Knihovny.cz" &&
+          [403, 418].includes(error.failure.status || 0);
+        response = json(
+          {
+            error: error.message,
+            ...(browserFallback ? { metadataFallback: "knihovny" } : {}),
+          },
+          502,
+        );
       } else {
         console.error(
           "Booxs request failed",

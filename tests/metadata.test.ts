@@ -347,6 +347,7 @@ describe("intermittent catalog failures", () => {
     for (const response of [
       new Response("", { status: 401 }),
       new Response("", { status: 403 }),
+      new Response("", { status: 418 }),
       new Response("", { status: 429, headers: { "Retry-After": "60" } }),
     ]) {
       const fetch = vi
@@ -419,6 +420,7 @@ describe("intermittent catalog failures", () => {
   it("preserves the final HTTP status for diagnostics without calling all failures busy", async () => {
     for (const [status, message] of [
       [403, "did not allow"],
+      [418, "did not allow"],
       [429, "limiting requests"],
       [503, "temporarily unavailable"],
     ] as const) {
