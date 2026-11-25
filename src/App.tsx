@@ -54,6 +54,7 @@ import {
 } from "./storage";
 import Scanner from "./Scanner";
 import Login from "./Login";
+import Cover from "./Cover";
 
 type View = "library" | "scan";
 type Modal =
@@ -81,32 +82,6 @@ function timeLabel(value: string | null) {
         minute: "2-digit",
       }).format(new Date(value))
     : "Not downloaded yet";
-}
-
-function Cover({
-  book,
-  large = false,
-}: {
-  book: Pick<Book, "title" | "author">;
-  large?: boolean;
-}) {
-  const hash = [...book.title].reduce((n, c) => n + c.charCodeAt(0), 0);
-  return (
-    <div
-      className={`book-cover cover-${hash % 6} ${large ? "large" : ""}`}
-      aria-hidden="true"
-    >
-      <div className="cover-rule" />
-      <span className="cover-title">{book.title}</span>
-      <span className="cover-author">{book.author || "A new story"}</span>
-      <div className="cover-orbit" />
-      <BookOpen
-        className="cover-mark"
-        size={large ? 22 : 15}
-        strokeWidth={1.2}
-      />
-    </div>
-  );
 }
 
 function Badges({ book }: { book: Pick<Book, "ownership" | "reading"> }) {
